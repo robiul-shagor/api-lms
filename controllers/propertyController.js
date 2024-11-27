@@ -170,23 +170,54 @@ router.get('/all-properties', async (req, res) => {
         let filter = {};
 
         // Apply filters if provided in the query
+        //MlsStatus=New&PropertySubType=Lower Level&ListPriceUnit=For Sale&MajorChangeTimestamp=2024-11-20T16:35:42.253Z
+
+        const dateRangeDays = parseInt(req.query.MajorChangeTimestamp) || 30; // Default to 30 days if not provided
+        const currentDate = new Date();
+        const dateRangeStart = new Date();
+        dateRangeStart.setDate(currentDate.getDate() - dateRangeDays); 
+
         if (req.query.MlsStatus) {
             filter["propertyDetails.MlsStatus"] = req.query.MlsStatus;
+
+            // Apply a date range filter for "Sold" status
+            if (req.query.MlsStatus === 'Sold') {
+                filter["propertyDetails.MajorChangeTimestamp"] = {
+                    $gte: dateRangeStart.toISOString(),
+                    $lte: currentDate.toISOString()
+                };
+            }
         }
         if (req.query.PropertyType) {
             filter["propertyDetails.PropertyType"] = { $regex: req.query.PropertyType, $options: 'i' };
         }           
         
         if (req.query.PropertySubType) {
-            filter["propertyDetails.PropertySubType"] = { $regex: req.query.PropertySubType, $options: 'i' };
-        }     
+            const propertySubType = req.query.PropertySubType.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+            filter["propertyDetails.PropertySubType"] = { 
+                $regex: propertySubType, 
+                $options: 'i' 
+            };
+        } 
         
         if (req.query.ListPriceUnit) {
-            filter["propertyDetails.ListPriceUnit"] = { $regex: req.query.ListPriceUnit, $options: 'i' };
+            const for_sales = req.query.ListPriceUnit.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+            filter["propertyDetails.ListPriceUnit"] = { $regex: for_sales, $options: 'i' };
+            filter["propertyDetails.MajorChangeTimestamp"] = {
+                $gte: dateRangeStart.toISOString(),
+                $lte: currentDate.toISOString()
+            };
         }   
         
-        if (req.query.MajorChangeTimestamp) {
-            filter["propertyDetails.MajorChangeTimestamp"] = { $regex: req.query.MajorChangeTimestamp, $options: 'i' };
+        // Apply date range for MajorChangeTimestamp when PropertySubType or MlsStatus is provided
+        if (req.query.PropertySubType || req.query.MlsStatus === 'Sold') {
+            const currentDate = new Date(); // Current date
+            const dateRangeStart = new Date();
+            dateRangeStart.setDate(currentDate.getDate() - 30); // 30 days ago
+            filter["propertyDetails.MajorChangeTimestamp"] = {
+                $gte: dateRangeStart.toISOString(),
+                $lte: currentDate.toISOString()
+            };
         }
 
         if (req.query.City) {
