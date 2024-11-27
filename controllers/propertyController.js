@@ -1,6 +1,7 @@
 const express = require('express');
 const PropertyIDX = require('../models/PropertyIDX'); // For IDX properties
 const PropertyVow = require('../models/PropertyVow'); // For Vow properties
+const PropertySold = require('../models/PropertySold'); // For Vow properties
 const router = express.Router();
 
 // GET /api/idx-properties - Fetch IDX properties with filtering
@@ -26,7 +27,7 @@ router.get('/idx-properties', async (req, res) => {
         }
 
         // Fetch filtered IDX properties
-        const properties = await PropertyIDX.find(filter).skip(startIndex).limit(limit).sort({ "propertyDetails.MajorChangeTimestamp": -1 }).lean();
+        const properties = await PropertyIDX.find(filter).skip(startIndex).limit(limit).sort({ "propertyDetails.ModificationTimestamp": -1 }).lean();
 
         // Get total count for pagination
         const totalProperties = await PropertyIDX.countDocuments(filter);
@@ -68,25 +69,26 @@ router.get('/vow-properties', async (req, res) => {
         }
         if (req.query.City) {
             filter["propertyDetails.City"] = { $regex: '^' + req.query.City, $options: 'i' };
+        }    
+        
+        if (req.query.City) {
+            filter["propertyDetails.City"] = { $regex: '^' + req.query.City, $options: 'i' };
         }
 
-        // Fetch all filtered Vow properties (without pagination first)
-        const filteredProperties = await PropertyVow.find(filter).sort({ "propertyDetails.MajorChangeTimestamp": -1 }).lean();
-
-        // Paginate the filtered properties
-        const properties = filteredProperties.slice(startIndex, startIndex + limit);
-
-        // Get total count for pagination (based on filtered data)
-        const totalProperties = filteredProperties.length;
+        if (req.query.BedroomsTotal) {
+            const bedroomsTotal = parseInt(req.query.BedroomsTotal);
+            if (!isNaN(bedroomsTotal)) {
+                filter["propertyDetails.BedroomsTotal"] = { $gt: bedroomsTotal };  // Apply filter for greater than
+            }
+        }
 
         // Fetch filtered Vow properties
-        // const properties = await PropertyVow.find(filter).skip(startIndex).limit(limit).sort({ "propertyDetails.MajorChangeTimestamp": -1 }).lean();
+        const properties = await PropertyVow.find(filter).skip(startIndex).limit(limit).sort({ "propertyDetails.ModificationTimestamp": -1 }).lean();
 
         // Get total count for pagination
-        //const totalProperties = await PropertyVow.countDocuments(filter);
+        const totalProperties = await PropertyVow.countDocuments(filter);
 
         // Calculate total pages
-        //const totalPages = Math.ceil(totalProperties / limit);
         const totalPages = Math.ceil(totalProperties / limit);
 
         // Send response with filtered Vow properties
@@ -102,8 +104,61 @@ router.get('/vow-properties', async (req, res) => {
     }
 });
 
+router.get('/sold-properties', async (req, res) => {
+    try {
+        // Get page, limit, and filter parameters
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 20));
+        const startIndex = (page - 1) * limit;
 
-// GET /api/all-properties - Fetch all properties from either IDX or Vow with filtering
+        // Initialize filter object
+        let filter = {};
+
+        // Apply filters if provided in the query
+        if (req.query.MlsStatus) {
+            filter["propertyDetails.MlsStatus"] = req.query.MlsStatus;
+        }
+        if (req.query.PropertyType) {
+            filter["propertyDetails.PropertyType"] = { $regex: req.query.PropertyType, $options: 'i' };
+        }
+        if (req.query.City) {
+            filter["propertyDetails.City"] = { $regex: '^' + req.query.City, $options: 'i' };
+        }    
+        
+        if (req.query.City) {
+            filter["propertyDetails.City"] = { $regex: '^' + req.query.City, $options: 'i' };
+        }
+
+        if (req.query.BedroomsTotal) {
+            const bedroomsTotal = parseInt(req.query.BedroomsTotal);
+            if (!isNaN(bedroomsTotal)) {
+                filter["propertyDetails.BedroomsTotal"] = { $gt: bedroomsTotal };  // Apply filter for greater than
+            }
+        }
+
+        // Fetch filtered Vow properties
+        const properties = await PropertySold.find(filter).skip(startIndex).limit(limit).sort({ "propertyDetails.ModificationTimestamp": -1 }).lean();
+
+        // Get total count for pagination
+        const totalProperties = await PropertySold.countDocuments(filter);
+
+        // Calculate total pages
+        const totalPages = Math.ceil(totalProperties / limit);
+
+        // Send response with filtered Vow properties
+        res.json({
+            page,
+            limit,
+            totalPages,
+            totalProperties,
+            properties
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Error fetching Vow properties', error });
+    }
+});
+
+// GET /api/all-properties - Fetch all properties from IDX, Vow, and Sold with filtering
 router.get('/all-properties', async (req, res) => {
     try {
         // Get page, limit, and filter parameters
@@ -124,6 +179,12 @@ router.get('/all-properties', async (req, res) => {
         if (req.query.City) {
             filter["propertyDetails.City"] = { $regex: '^' + req.query.City, $options: 'i' };
         }
+        if (req.query.BedroomsTotal) {
+            const bedroomsTotal = parseInt(req.query.BedroomsTotal);
+            if (!isNaN(bedroomsTotal)) {
+                filter["propertyDetails.BedroomsTotal"] = { $gt: bedroomsTotal };  // Apply filter for greater than
+            }
+        }
 
         // Fetch filtered IDX properties
         const idxProperties = await PropertyIDX.find(filter).skip(startIndex).limit(limit).lean();
@@ -131,22 +192,32 @@ router.get('/all-properties', async (req, res) => {
         // Fetch filtered Vow properties
         const vowProperties = await PropertyVow.find(filter).skip(startIndex).limit(limit).lean();
 
-        // Combine both arrays of filtered properties
-        const allProperties = [...idxProperties, ...vowProperties];
+        // Fetch filtered Sold properties
+        const soldProperties = await PropertySold.find(filter).skip(startIndex).limit(limit).lean();
 
-        // Calculate total count for pagination
-        const totalProperties = await PropertyIDX.countDocuments(filter) + await PropertyVow.countDocuments(filter);
+        // Combine all arrays of filtered properties
+        const allProperties = [...idxProperties, ...vowProperties, ...soldProperties];
+
+        // Deduplicate the properties based on ListingKey
+        const uniqueProperties = Array.from(
+            new Map(allProperties.map(property => [property.ListingKey, property])).values()
+        );
+
+        // Calculate total count for pagination (counting all properties in each collection)
+        const totalProperties = await PropertyIDX.countDocuments(filter) 
+                               + await PropertyVow.countDocuments(filter)
+                               + await PropertySold.countDocuments(filter);
 
         // Calculate total pages
         const totalPages = Math.ceil(totalProperties / limit);
 
-        // Send response with filtered, combined properties
+        // Send response with filtered, combined, and deduplicated properties
         res.json({
             page,
             limit,
             totalPages,
             totalProperties,
-            properties: allProperties
+            properties: uniqueProperties
         });
     } catch (error) {
         res.status(500).json({ message: 'Error fetching properties', error });

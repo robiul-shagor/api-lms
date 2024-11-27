@@ -12,11 +12,19 @@ const { syncData } = require('./services/syncService');
 
 // MongoDB connection
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGODB_URI, {
+    maxPoolSize: 10,          // Adjust the connection pool size as needed
+    serverSelectionTimeoutMS: 5000, // Timeout for connecting to the server
+    socketTimeoutMS: 45000,        // Timeout for socket inactivity
+})
     .then(() => {
         console.log('Connected to MongoDB');
     })
-    .catch((error) => console.error('MongoDB connection error:', error));
+    .catch((error) => {
+        console.error('MongoDB connection error:', error);
+        process.exit(1); // Exit process if the database fails to connect
+    });
+
 
 // Express setup
 const app = express();
@@ -37,7 +45,7 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // Schedule data sync every hour
-cron.schedule('0 6,18 * * *', syncData);
+cron.schedule('0 */12 * * *', syncData);
 
 // Define routes
 const propertyController = require('./controllers/propertyController');
