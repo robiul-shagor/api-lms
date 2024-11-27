@@ -175,7 +175,20 @@ router.get('/all-properties', async (req, res) => {
         }
         if (req.query.PropertyType) {
             filter["propertyDetails.PropertyType"] = { $regex: req.query.PropertyType, $options: 'i' };
+        }           
+        
+        if (req.query.PropertySubType) {
+            filter["propertyDetails.PropertySubType"] = { $regex: req.query.PropertySubType, $options: 'i' };
+        }     
+        
+        if (req.query.ListPriceUnit) {
+            filter["propertyDetails.ListPriceUnit"] = { $regex: req.query.ListPriceUnit, $options: 'i' };
+        }   
+        
+        if (req.query.MajorChangeTimestamp) {
+            filter["propertyDetails.MajorChangeTimestamp"] = { $regex: req.query.MajorChangeTimestamp, $options: 'i' };
         }
+
         if (req.query.City) {
             filter["propertyDetails.City"] = { $regex: '^' + req.query.City, $options: 'i' };
         }
@@ -184,16 +197,58 @@ router.get('/all-properties', async (req, res) => {
             if (!isNaN(bedroomsTotal)) {
                 filter["propertyDetails.BedroomsTotal"] = { $gt: bedroomsTotal };  // Apply filter for greater than
             }
+        }     
+        
+        if (req.query.BathroomsTotalInteger) {
+            const bathRoomsTotal = parseInt(req.query.BathroomsTotalInteger);
+            if (!isNaN(bathRoomsTotal)) {
+                filter["propertyDetails.BathroomsTotalInteger"] = { $gt: bathRoomsTotal };  // Apply filter for greater than
+            }
+        }
+
+        // Price range filter
+        if (req.query.minPrice || req.query.maxPrice) {
+            filter["propertyDetails.ListPrice"] = {};
+            if (req.query.minPrice) {
+                const minPrice = parseFloat(req.query.minPrice);
+                if (!isNaN(minPrice)) {
+                    filter["propertyDetails.ListPrice"]["$gte"] = minPrice; // Greater than or equal to minPrice
+                }
+            }
+            if (req.query.maxPrice) {
+                const maxPrice = parseFloat(req.query.maxPrice);
+                if (!isNaN(maxPrice)) {
+                    filter["propertyDetails.ListPrice"]["$lte"] = maxPrice; // Less than or equal to maxPrice
+                }
+            }
+        }
+
+        // Determine sort order
+        const sortBy = req.query.sortBy || "Newest"; // Default to "Newest"
+        let sort = {};
+        switch (sortBy) {
+            case "HighToLow":
+                sort["propertyDetails.ListPrice"] = -1; // Price high to low
+                break;
+            case "LowToHigh":
+                sort["propertyDetails.ListPrice"] = 1; // Price low to high
+                break;
+            case "Newest":
+                sort["propertyDetails.MajorChangeTimestamp"] = -1; // Newest first
+                break;
+            case "Oldest":
+                sort["propertyDetails.MajorChangeTimestamp"] = 1; // Oldest first
+                break;
         }
 
         // Fetch filtered IDX properties
-        const idxProperties = await PropertyIDX.find(filter).skip(startIndex).limit(limit).lean();
+        const idxProperties = await PropertyIDX.find(filter).skip(startIndex).limit(limit).sort(sort).lean();
 
         // Fetch filtered Vow properties
-        const vowProperties = await PropertyVow.find(filter).skip(startIndex).limit(limit).lean();
+        const vowProperties = await PropertyVow.find(filter).skip(startIndex).limit(limit).sort(sort).lean();
 
         // Fetch filtered Sold properties
-        const soldProperties = await PropertySold.find(filter).skip(startIndex).limit(limit).lean();
+        const soldProperties = await PropertySold.find(filter).skip(startIndex).limit(limit).sort(sort).lean();
 
         // Combine all arrays of filtered properties
         const allProperties = [...idxProperties, ...vowProperties, ...soldProperties];
@@ -208,8 +263,13 @@ router.get('/all-properties', async (req, res) => {
                                + await PropertyVow.countDocuments(filter)
                                + await PropertySold.countDocuments(filter);
 
-        // Calculate total pages
-        const totalPages = Math.ceil(totalProperties / limit);
+        // short
+        // Slice the results to enforce pagination limits
+        const paginatedProperties = uniqueProperties.slice(startIndex, startIndex + limit);
+
+        // Calculate total count for pagination
+        const totalPropertiesItems = uniqueProperties.length;
+        const totalPages = Math.ceil(totalPropertiesItems / limit);
 
         // Send response with filtered, combined, and deduplicated properties
         res.json({
@@ -217,7 +277,7 @@ router.get('/all-properties', async (req, res) => {
             limit,
             totalPages,
             totalProperties,
-            properties: uniqueProperties
+            properties: paginatedProperties
         });
     } catch (error) {
         res.status(500).json({ message: 'Error fetching properties', error });
