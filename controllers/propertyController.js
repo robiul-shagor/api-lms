@@ -181,13 +181,14 @@ router.get('/all-properties', async (req, res) => {
             filter["propertyDetails.MlsStatus"] = req.query.MlsStatus;
 
             // Apply a date range filter for "Sold" 
-            if (req.query.MlsStatus == 'Sold') {
+            if (req.query.MlsStatus == 'Sold' && req.query.MajorChangeTimestamp) {
                 filter["propertyDetails.MajorChangeTimestamp"] = {
                     $gte: dateRangeStart.toISOString(),
                     $lte: currentDate.toISOString()
                 };
             }
         }
+
         if (req.query.PropertyType) {
             filter["propertyDetails.PropertyType"] = { $regex: req.query.PropertyType, $options: 'i' };
         }           
@@ -210,7 +211,7 @@ router.get('/all-properties', async (req, res) => {
         }   
         
         // Apply date range for MajorChangeTimestamp when PropertySubType or MlsStatus is provided
-        if (req.query.PropertySubType || req.query.MlsStatus === 'Sold') {
+        if (req.query.PropertySubType ) {
             const currentDate = new Date(); // Current date
             const dateRangeStart = new Date();
             dateRangeStart.setDate(currentDate.getDate() - 30); // 30 days ago
