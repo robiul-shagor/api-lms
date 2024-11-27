@@ -180,8 +180,8 @@ router.get('/all-properties', async (req, res) => {
         if (req.query.MlsStatus) {
             filter["propertyDetails.MlsStatus"] = req.query.MlsStatus;
 
-            // Apply a date range filter for "Sold" status
-            if (req.query.MlsStatus === 'Sold') {
+            // Apply a date range filter for "Sold" 
+            if (req.query.MlsStatus == 'Sold') {
                 filter["propertyDetails.MajorChangeTimestamp"] = {
                     $gte: dateRangeStart.toISOString(),
                     $lte: currentDate.toISOString()
