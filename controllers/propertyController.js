@@ -189,6 +189,11 @@ router.get('/all-properties', async (req, res) => {
             }
         }
 
+        if (req.query.PublicRemarks && req.query.PublicRemarks.includes('Luxury')) {
+            filter["propertyDetails.PublicRemarks"] = { $regex: 'Luxury', $options: 'i' };
+        }       
+        
+
         if (req.query.PropertyType) {
             filter["propertyDetails.PropertyType"] = { $regex: req.query.PropertyType, $options: 'i' };
         }           
